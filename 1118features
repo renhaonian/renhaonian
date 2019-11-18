@@ -1,0 +1,249 @@
+import numpy as np
+import pandas as pd
+from sklearn import preprocessing
+
+def dmean(data, a):
+    t = data.groupby(data[a], as_index=False).apply(lambda x: np.mean(x, axis=0))
+    dt = t.drop([a], axis=1)
+    dt.columns = dt.columns.map(lambda x: x + '_' + 'mean')
+    id = data[a].groupby(data[a]).apply(np.max)
+    id_ = pd.DataFrame(id.reset_index(drop=True))[a]
+    end = pd.concat([id_, dt], axis=1)
+    return end
+
+
+def dmin(data, a):
+    t = data.groupby(data[a], as_index=False).apply(np.min)
+    dt = t.drop([a], axis=1)
+    dt.columns = dt.columns.map(lambda x: x + '_' + 'min')
+    id = data[a].groupby(data[a]).apply(np.max)
+    id_ = pd.DataFrame(id.reset_index(drop=True))[a]
+    end = pd.concat([id_, dt], axis=1)
+    return end
+
+
+def dmax(data, a):
+    t = data.groupby(data[a], as_index=False).apply(np.max)
+    dt = t.drop([a], axis=1)
+    dt.columns = dt.columns.map(lambda x: x + '_' + 'max')
+    id = data[a].groupby(data[a]).apply(np.max)
+    id_ = pd.DataFrame(id.reset_index(drop=True))[a]
+    end = pd.concat([id_, dt], axis=1)
+    return end
+
+
+def drange(data, a):
+    t = data.groupby(data[a], as_index=False).apply(lambda x: np.max(x)-np.min(x))
+    dt = t.drop([a], axis=1)
+    dt.columns = dt.columns.map(lambda x: x + '_' + 'range')
+    id = data[a].groupby(data[a]).apply(np.max)
+    id_ = pd.DataFrame(id.reset_index(drop=True))[a]
+    end = pd.concat([id_, dt], axis=1)
+    return end
+
+def dsum(data, a):
+    t = data.groupby(data[a], as_index=False).apply(np.sum)
+    dt = t.drop([a], axis=1)
+    dt.columns = dt.columns.map(lambda x: x + '_' + 'sum')
+    id = data[a].groupby(data[a]).apply(np.max)
+    id_ = pd.DataFrame(id.reset_index(drop=True))[a]
+    end = pd.concat([id_, dt], axis=1)
+    return end
+
+
+def dcount(data, a):
+    t = data.groupby(data[a], as_index=False).apply(lambda x: x.count())
+    dt = t.drop([a], axis=1)
+    dt.columns = dt.columns.map(lambda x: x + '_' + 'count')
+    id = data[a].groupby(data[a]).apply(np.max)
+    id_ = pd.DataFrame(id.reset_index(drop=True))[a]
+    end = pd.concat([id_, dt], axis=1)
+    return end
+
+
+def dstd(data, a):
+    t = data.groupby(data[a], as_index=False).apply(np.std)
+    dt = t.drop([a], axis=1)
+    dt.columns = dt.columns.map(lambda x: x + '_' + 'std')
+    id = data[a].groupby(data[a]).apply(np.max)
+    id_ = pd.DataFrame(id.reset_index(drop=True))[a]
+    end = pd.concat([id_, dt], axis=1)
+    return end
+
+
+def dcv(data, a):
+    t = data.groupby(data[a], as_index=False).apply(lambda x: np.std(x)/np.mean(x) if np.mean(x).all != 0 else null)
+    dt = t.drop([a], axis=1)
+    dt.columns = dt.columns.map(lambda x: x + '_' + 'cv')
+    id = data[a].groupby(data[a]).apply(np.max)
+    id_ = pd.DataFrame(id.reset_index(drop=True))[a]
+    end = pd.concat([id_, dt], axis=1)
+    return end
+
+
+def r3(data1, data2, a):
+    r = data1/data2
+    r.columns = r.columns.map(lambda a: a + '_' + '3' + '_' + 'rate')
+    id = data1[a].reset_index(drop=True)
+    r3 = pd.concat([id, r], axis=1)
+    return r3
+
+
+def r1(data1, data2, a):
+    l = list(data1[a])
+    dat = data2[(data2[a].isin(l))]
+    da = data1.drop([a], axis=1).reset_index(drop=True)
+    da2 = dat.drop([a], axis=1).reset_index(drop=True)
+    names = list(da2.columns.values)
+    da.columns = names
+    r = da/da2
+    r.columns = r.columns.map(lambda x: x + '_' + 'rate')
+    id = data1[a].reset_index(drop=True)
+    r1 = pd.concat([id, r], axis=1)
+    return r1
+
+
+def dmode(data, a):
+    t = data.groupby(data[a], as_index=False).agg(lambda x: np.min(pd.Series.mode(x))).reset_index(drop=True)
+    dt = t.drop([a], axis=1)
+    dt.columns = dt.columns.map(lambda x: x + '_' + 'mode')
+    id = data[a].groupby(data[a]).apply(np.max)
+    id_ = pd.DataFrame(id.reset_index(drop=True))[a]
+    end = pd.concat([id_, dt], asix=1)
+    return end
+
+
+def dzero(data, a):
+    t = data.groupby(data[a], as_index=False).apply(lambda x: np.sum(x == 0))
+    dt = t.drop([a], axis=1)
+    dt.columns = dt.columns.map(lambda x: x + '_' + 'is' + '_' + '0' + '_' + 'count')
+    id = data[a].groupby(data[a]).apply(np.max)
+    id_ = pd.DataFrame(id.reset_index(drop=True))[a]
+    end = pd.concat([id_, dt], axis=1)
+    return end
+
+
+def div(data1, data2, id):    ## 数据输入方式为da2[['value']],两列相除
+    name1 = list(data1.columns.values)
+    name2 = list(data1.columns.values)
+    d = data1
+    d.columns = list(data2.columns.values)
+    di = d/data2
+    di1 = pd.DataFrame(di)
+    div = di1.reset_index(drop=True)
+    n = str(name1[0] + '_' + name2[0])
+    div.columns = n.strip(',').split(',')
+    id_ = id.reset_index(drop=True)
+    div2 = pd.concat([id_, div], axis=1)
+    return div2
+
+
+def dpow(data1, data2, id):  # 数据输入方式为da2[['value']],两列相除
+    name1 = list(data1.columns.values)
+    name2 = list(data1.columns.values)
+    d = data1
+    d.columns = list(data2.columns.values)
+    t = d * data2
+    dp = pd.DataFrame(t)
+    n = str(name1[0] + '_' + name2[0])
+    dp.columns = n.strip(',').split(',')
+    id_ = id.reset_index(drop=True)
+    dpow = pd.concat([id_, dp], axis=1)
+    return dpow
+
+
+def dln(data, a):
+    da_ = data.drop([a], axis=1)
+    d1 = da_.apply(lambda x: np.log(x))
+    d1.columns = d1.columns.map(lambda a: a + '_' + 'ln')
+    id = data[a].reset_index(drop=True)
+    dln = pd.concat([id, d1], axis=1)
+    return dln
+
+
+def dsca(data, a):  # 必须是同一个月内的整个数据集，对整个数据集做归一化处理
+    da_ = data.drop([a], axis=1)
+    name = list(da_.columns.values)
+    min_max_scaler = preprocessing.MinMaxScaler()
+    dat = da_.fillna('0').astype(np.float64)
+    d = min_max_scaler.fit_transform(dat)
+    da = pd.DataFrame(d)
+    for i in range(len(name)):
+        name[i] += '_' + 'scaler'
+    da.columns = name
+    id = data[a].reset_index(drop=True)
+    dat = pd.concat([id, da], axis=1)
+    return dat
+
+
+def dqua(data, a):
+    qs = data.iloc[:, 0:1]
+    for i in range(1, data.columns.size):
+        d11 = data.iloc[:, 0]
+        d12 = data.iloc[:, i]
+        d = pd.concat([d11, d12], axis=1)
+        t = d.sort_values(by=d12.name)
+        t1 = pd.DataFrame(t)
+        t2 = t1.reset_index(drop=True)
+        t3 = t2.index.tolist()
+        t4 = np.array(t3)
+        t5 = t4 + 1
+        t6 = t5/len(d)
+        t7 = pd.DataFrame(t6)
+        t7.columns = [d.iloc[:, 1].name + '_' + 'qua']
+        end = pd.concat([t2.iloc[:, 0], t7], axis=1)
+        qs = pd.merge(qs, end, on=data.iloc[:, 0].name)
+        qs1 = qs.rename(columns={data.iloc[:, 0].name: a})
+    return qs1
+
+
+# 对数值特征设定特定阈值，将其转换为布尔值，1代表True，0代表False
+def dbr(data, value):  # id加上其中一列数据  data = pd.concat([id,feature], axis=1)
+    t1 = data.iloc[:, 1].apply(lambda x: 1 if x >= value else 0)
+    t2 = pd.DataFrame(t1)
+    name2 = str(value)
+    name1 = list(data.columns.values)[1]
+    n = str(name1[0] + '_' + name2 + '_' + 'dbr')
+    t2.columns = n.strip(',').split(',')
+    t3 = t2.reset_index(drop=True)
+    dbr = pd.concat([id, t3], axis=1)
+    return dbr
+
+
+# 相对基数的差（求列变量减去（整个列变量的）统计量），以均值为例，可更改
+def diff(da):  # id加上其中一列数据  data = pd.concat([id,feature], axis=1)
+    data = da.iloc[:, 1]
+    t = np.array(data)
+    t11 = np.array(data)
+    t12 = np.array(t11)
+    t1 = t - t12
+    t2 = pd.DataFrame(t1)
+    name1 = list(da.columns.values)[1]
+    n = str(name1 + '_' + 'mean' + '_' + 'diff')
+    t2.columns = n.strip(',').split(',')
+    t3 = t2.reset_index(drop=True)
+    id = da.iloc[:, 0].reset_index(drop=True)
+    dif = pd.concat([id, t3], axis=1)
+    return dif
+
+
+#  针对0和1的是否二分类离散变量
+def rate1(data, a):
+    t = data.groupby(data[a], as_index=False).apply(lambda x: np.sum(x == 1)/x.count())
+    dt = t.drop(a, 1)
+    dt.columns = dt.columns.map(lambda x: x + '_' + '1' + '_' + 'rate')
+    id = data[a].groupby(data[a]).apply(np.max)
+    id_ = pd.DataFrame(id.reset_index(drop=True))[a]
+    end = pd.concat([id_, dt], axis=1)
+    return end
+
+def dcut(data, bins, label):
+    dat = data.iloc[:, 1].reset_index(drop=True)
+    dat1 = pd.cut(dat, bins, labels=label)
+    name = list(data.colunms.values)[1]
+    dat1.columns = [name + 'cut']
+    id = data.iloc[:, 0].reset_index(drop=True)
+    end = pd.concat([id, dat1], axis=1)
+    return end
+
+
