@@ -1,1 +1,114 @@
 
+# 解决csv读取或存入时将行索引默认为第一列值的问题
+# 第一种解决方式：不存索引
+# df.to_csv(path,index=False,header=False)
+# 第二种解决方式：声明文件第一列为索引，第一行为列名（默认就是，不必重新申明）
+# aa = pd.read_csv(path,index_col=0,header=0)
+# 两种解决方式任一种都可以解决这种问题
+
+
+# 对txt中的数据按行读取，并以行为单位保存在list中
+import sys
+def read_on_line(file_path):
+    list = []
+    with open(file_path) as f:
+        for line in f.readlines():
+            list.append(line.strip('\n').split(','))
+    return list
+
+# 对特殊字符删除,'\\N'
+def clean(data):
+    c = data.apply(lambda x: x.translate(str.maketrans('', '', '\\N')))
+    cl = c.apply(lambda x: int(float(x)))
+    return cl
+
+# 大文件读取
+import pandas as pd
+reader = pd.read_csv('test.csv', iterator=True, low_memory=False)# 备用分隔符delimiter="\t"
+loop = True
+chunkSize = 100000
+chunks = []
+while loop:
+    try:
+        chunk = reader.get_chunk(chunkSize)
+        chunks.append(chunk)
+    except StopIteration:
+        loop = False
+        print("迭代停止。")
+df = pd.concat(chunks, ignore_index=True)
+
+
+# 将dataframe一列数分列为多列
+def data_split(data, split_col, name):
+    data_df = data[split_col].str.split(',', expand=True)
+    df = pd.concat([data_df, data], axis=1, names=name)
+    return df
+
+# 检索出某个列中重复数值频率大于某个比例的列名
+def cols_drop(data):
+    cols = data.columns
+    name = []
+    n = len(data)
+    for col in cols:
+        count = data[col].value_counts().iloc[0]
+        rate = count/n
+        if rate >= 0.8:
+            name.append(col)
+    return name
+
+# 模型保存与加载
+from sklearn.externals import joblib
+# joblib.dump(clf, 'digits_svm.m') #保存
+# clf = joblib.load('digits_svm.m') #加载
+
+# 样本清洗,替换特殊字符，并转为int类型
+import pandas as np
+def cols(data):#data第一列为id
+    cols = data.iloc[:, 0]#第一列id
+    for i in range(1, data.shape[1]):
+        col = data.iloc[:, i]
+        c = col.apply(lambda x: str(x).translate(str.maketrans('', '', '\\N')))#替换掉/N
+        col1 = c.apply(lambda x: int(float(x)) if x != '' else np.nan)
+        cols = pd.concat([cols, col1], axis=1)
+    return cols
+
+# 去掉科学计数法，并把数据类型转为日期格式
+from datetime import datetime
+def date_data(data):
+    dat = data.apply(lambda x: '{:.0f}'.format(x))
+    data_str = dat.apply(lambda x: str(x))
+    data_stri = data_str.apply(lambda x: x[:4] + '/' + x[4:6] + '/' + x[6:])
+    date_data = data_stri.apply(lambda x: datetime.strftime(x, '%Y/%m/%d'))
+    return date_data
+
+# 月份差值
+def month_delta(start_date, end_date):
+    year_diff = end_date.year - start_date.year
+    end_month = year_diff*12 + end_date.month
+    delta = end_month - start_date.month
+    return delta
+
+# 决策树输出规则？
+from sklearn.tree import _tree
+
+def tree_to_code(tree, feature_names):
+    tree_ = tree.tree_
+    feature_name = [
+        feature_names[i] if i != _tree.TREE_UNDEFINED else "undefined!"
+        for i in tree_.feature
+    ]
+    print("def tree({}):".format(", ".join(feature_names)))
+
+    def recurse(node, depth):
+        indent = "  " * depth
+        if tree_.feature[node] != _tree.TREE_UNDEFINED:
+            name = feature_name[node]
+            threshold = tree_.threshold[node]
+            print ("{}if {} <= {}:".format(indent, name, threshold))
+            recurse(tree_.children_left[node], depth + 1)
+            print("{}else:  # if {} > {}".format(indent, name, threshold))
+            recurse(tree_.children_right[node], depth + 1)
+        else:
+            print("{}return {}".format(indent, tree_.value[node]))
+
+    recurse(0, 1)
