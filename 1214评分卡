@@ -1,1 +1,327 @@
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+import matplotlib.pyplot as plt
+# from matplotlib import font_manager
+from sklearn.model_selection import train_test_split
+import scipy.stats as stats
+import seaborn as sns
+import statsmodels.api as sm
+from sklearn import metrics
+from pylab import *
+mpl.rcParams['font.sans-serif'] = ['SimHei']  # 绘图显示中文
+# --------------------载入数据--------------------------------------------------------------------
+f = open('D:/python相关/cs-training.csv', errors='ignore')
+d = pd.read_csv(f, low_memory=False)
+d.columns = ['标签', '无担保放款循环利用', '年龄', '35-59逾期不糟糕次数', '负债比'
+             , '月收入', '开放式贷款数', '90天逾期次数', '不动产贷款或额度数量', '69-89逾期不糟糕次数'
+             , '家属数量']
+print(d.info())
+# -------------------数据分布情况------------------------------------------------------------------
+print(d.head(20))
+d.describe().to_csv('D:/python相关/describe.csv', encoding='utf_8_sig')
+'''月收入为120269，缺失29731
+家属数量为146076，缺失3924'''
 
+# -------------------缺失值处理填充-------------------------------------------------------------------
+'''
+1.直接删除含有缺失值的样本。
+2.根据样本之间的相似性填补缺失值。
+3.根据变量之间的相关关系填补缺失值。'''
+# 用随机森林对缺失值预测填充函数
+
+
+def set_missing(df):
+    # 把已有的数值型特征取出来
+    process_df = df.ix[:, [5, 0, 1, 2, 3, 4, 6, 7, 8, 9]]
+    # 分成已知该特征和未知该特征两部分
+    known = process_df[process_df['月收入'].notnull()].values
+    unknown = process_df[process_df['月收入'].isnull()].values
+    # X为特征属性值
+    X = known[:, 1:]
+    # y为结果标签值
+    y = known[:, 0]
+    # fit到RandomForestRegressor之中
+    rfr = RandomForestRegressor(random_state=0, n_estimators=200, max_depth=3, n_jobs=-1)
+    rfr.fit(X, y)
+    # 用得到的模型进行未知特征值预测
+    predicted = rfr.predict(unknown[:, 1:]).round(0)
+    # 用得到的预测结果填补原缺失数据
+    df.loc[(df['月收入'].isnull()), '月收入'] = predicted
+    return df
+
+
+d = set_missing(d)  # 用随机森林填补比较多的缺失值
+d = d.dropna()  # 删除比较少的缺失值
+d = d.drop_duplicates()  # 删除重复项
+d.to_csv('D:/python相关/MissingData.csv', index=False, encoding='utf_8_sig')
+
+# -----------------异常值处理--------------------------------------------------------------------------
+d = d[d['年龄'] > 0]
+# 箱线图
+db = d[['35-59逾期不糟糕次数', '90天逾期次数', '69-89逾期不糟糕次数']]
+db.plot.box(title='逾期异常检测')
+plt.grid(linestyle='--', alpha=0.3)
+plt.show()
+'''逾期相关变量的异常值为95以上'''
+d = d[d['35-59逾期不糟糕次数'] < 95]
+# 好客户取为1，坏客户取为0
+# d['标签'] = 1 - d['标签']
+# ------------------------数据探索-------------------------------
+db = d[['月收入']]
+
+db.plot(title='月收入')
+plt.show()
+
+# ------------------------数据分箱----------------------------------
+# 定义自动分箱函数
+
+
+def mono_bin(Y, X, n=20):  # 最优分箱
+    r = 0
+    good = Y.sum()
+    bad = Y.count() - good
+    while np.abs(r) < 1:
+        d1 = pd.DataFrame({"X": X, "Y": Y, "Bucket": pd.qcut(X, n)})
+        d2 = d1.groupby('Bucket', as_index=True)
+        r, p = stats.spearmanr(d2.mean().X, d2.mean().Y)
+        n = n - 1
+    d3 = pd.DataFrame(d2.X.min(), columns=['min'])
+    d3['min'] = d2.min().X
+    d3['max'] = d2.max().X
+    d3['sum'] = d2.sum().Y
+    d3['total'] = d2.count().Y
+    d3['rate'] = d2.mean().Y
+    d3['woe'] = np.log((d3['rate']/(1-d3['rate']))/(good/bad))
+    d3['goodattribute'] = d3['sum']/good
+    d3['badattribute'] = (d3['total']-d3['sum'])/bad
+    iv = ((d3['goodattribute'] - d3['badattribute']) * d3['woe']).sum()
+    d4 = d3.sort_values(by='min')
+    print("=" * 60)
+    print(d4)
+    cut = []
+    cut.append(float('-inf'))
+    for i in range(1, n+1):
+        qua = X.quantile(i/(n+1))
+        cut.append(round(qua, 4))
+    cut.append(float('inf'))
+    woe = list(d4['woe'].round(3))
+    return d4, iv, cut, woe
+
+
+def self_bin(Y, X, cat):  # 自定义分箱
+    good = Y.sum()
+    bad = Y.count()-good
+    d1 = pd.DataFrame({'X': X, 'Y': Y, 'Bucket': pd.cut(X, cat)})
+    d2 = d1.groupby('Bucket', as_index=True)
+    d3 = pd.DataFrame(d2.X.min(), columns=['min'])
+    d3['min'] = d2.min().X
+    d3['max'] = d2.max().X
+    d3['sum'] = d2.sum().Y
+    d3['total'] = d2.count().Y
+    d3['rate'] = d2.mean().Y
+    d3['woe'] = np.log((d3['rate'] / (1 - d3['rate'])) / (good / bad))
+    d3['goodattribute'] = d3['sum'] / good
+    d3['badattribute'] = (d3['total'] - d3['sum']) / bad
+    iv = ((d3['goodattribute'] - d3['badattribute']) * d3['woe']).sum()
+    d4 = d3.sort_values(by='min')
+    print("=" * 60)
+    print(d4)
+    woe = list(d4['woe'].round(3))
+    return d4, iv, woe
+
+
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
+# 连续变量分箱
+dfx1, ivx1, cut_x1, woe_x1 = mono_bin(d['标签'], d['无担保放款循环利用'], n=10)
+dfx2, ivx2, cut_x2, woe_x2 = mono_bin(d['标签'], d['年龄'], n=10)
+dfx4, ivx4, cut_x4, woe_x4 = mono_bin(d['标签'], d['负债比'], n=20)
+dfx5, ivx5, cut_x5, woe_x5 = mono_bin(d['标签'], d['月收入'], n=10)
+p_inf = float('inf')  # 正无穷大
+n_inf = float('-inf')  # 负无穷大
+# 离散变量分箱
+cut_x3 = [n_inf, 0, 1, 3, 5, p_inf]
+cut_x6 = [n_inf, 1, 2, 3, 5, p_inf]
+cut_x7 = [n_inf, 0, 1, 3, 5, p_inf]
+cut_x8 = [n_inf, 0, 1, 2, 3, p_inf]
+cut_x9 = [n_inf, 0, 1, 3, p_inf]
+cut_x10 = [n_inf, 0, 1, 2, 3, 5, p_inf]
+
+dfx3, ivx3, woe_x3 = self_bin(d['标签'], d['35-59逾期不糟糕次数'], cut_x3)
+dfx6, ivx6, woe_x6 = self_bin(d['标签'], d['开放式贷款数'], cut_x6)
+dfx7, ivx7, woe_x7 = self_bin(d['标签'], d['90天逾期次数'], cut_x7)
+dfx8, ivx8, woe_x8 = self_bin(d['标签'], d['不动产贷款或额度数量'], cut_x8)
+dfx9, ivx9, woe_x9 = self_bin(d['标签'], d['69-89逾期不糟糕次数'], cut_x9)
+dfx10, ivx10, woe_x10 = self_bin(d['标签'], d['家属数量'], cut_x10)
+# ---------------------------相关性分析和iv筛选------------------------------------------------
+corr = d.corr()  # 计算各变量的相关性系数
+x_ticks = ['x0', 'x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8', 'x9', 'x10']  # x轴标签
+y_ticks = list(corr.index)  # y轴标签
+# 绘制相关性系数热力图
+fig = plt.figure()
+ax1 = fig.add_subplot(1, 1, 1)
+sns.heatmap(corr, annot=True, cmap='rainbow', ax=ax1, annot_kws={'size': 6, 'weight': 'bold', 'color': 'blue'})
+ax1.set_xticklabels(x_ticks, rotation=0, fontsize=10)
+ax1.set_yticklabels(y_ticks, rotation=0, fontsize=10)
+plt.show()
+
+iv_list = [ivx1, ivx2, ivx3, ivx4, ivx5, ivx6, ivx7, ivx8, ivx9, ivx10]
+index = ['x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8', 'x9', 'x10']
+fig1 = plt.figure(1)
+ax1 = fig1.add_subplot(1, 1, 1)
+x = np.arange(len(index))+1
+ax1.bar(x, iv_list, width=0.4)  # 生成柱状图
+ax1.set_xticks(x)
+ax1.set_xticklabels(index, rotation=0, fontsize=12)
+ax1.set_ylabel('IV(Information Value)', fontsize=14)
+# 在柱状图上添加数字标签
+for a, b in zip(x, iv_list):
+    plt.text(a, b + 0.01, '%.4f' % b, ha='center', va='bottom', fontsize=10)
+plt.show()
+
+# ---------------------将变量替换为woe变量----------------------------------------
+# 替换成woe函数
+
+
+def replace_woe(s, cut, woe):
+    li = []
+    i = 0
+    while i < len(s):
+        value = s[i]
+        j = len(cut) - 2
+        m = len(cut) - 2
+        while j >= 0:
+            if value >= cut[j]:
+                j = -1
+            else:
+                j -= 1
+                m -= 1
+        li.append(woe[m])
+        i += 1
+    return li
+# 替换
+
+
+d = d.reset_index(drop=True)
+d['无担保放款循环利用'] = pd.Series(replace_woe(d['无担保放款循环利用'], cut_x1, woe_x1))
+d['年龄'] = pd.Series(replace_woe(d['年龄'], cut_x2, woe_x2))
+d['35-59逾期不糟糕次数'] = pd.Series(replace_woe(d['35-59逾期不糟糕次数'], cut_x3, woe_x3))
+d['负债比'] = pd.Series(replace_woe(d['负债比'], cut_x4, woe_x4))
+d['月收入'] = pd.Series(replace_woe(d['月收入'], cut_x5, woe_x5))
+d['开放式贷款数'] = pd.Series(replace_woe(d['开放式贷款数'], cut_x6, woe_x6))
+d['90天逾期次数'] = pd.Series(replace_woe(d['90天逾期次数'], cut_x7, woe_x7))
+d['不动产贷款或额度数量'] = pd.Series(replace_woe(d['不动产贷款或额度数量'], cut_x8, woe_x8))
+d['69-89逾期不糟糕次数'] = pd.Series(replace_woe(d['69-89逾期不糟糕次数'], cut_x9, woe_x9))
+d['家属数量'] = pd.Series(replace_woe(d['家属数量'], cut_x10, woe_x10))
+d.to_csv('D:/python相关/WoeData.csv', index=False, encoding='utf_8_sig')
+# ----------------------------数据划分--------------------------------------
+feature = d[['无担保放款循环利用', '年龄', '35-59逾期不糟糕次数',
+             '90天逾期次数',  '69-89逾期不糟糕次数']]  # 剔除对因变量影响不明显的变量，即通过iv值判断
+target = d[['标签']]
+X_train, X_test, y_train, y_test = train_test_split(feature, target, test_size=0.3)
+count_ytr = y_train.groupby('标签')['标签'].count()
+count_yte = y_test.groupby('标签')['标签'].count()
+print(count_ytr)
+print(count_yte)
+
+# -----------------------------------模型建立------------------------------------------
+X_tr = sm.add_constant(X_train)
+logit = sm.Logit(y_train, X_tr)
+result = logit.fit()
+print(result.summary())
+# ----------------------------------模型检验---------------------------------------------
+X_te = sm.add_constant(X_test)
+resu = result.predict(X_te)  # 预测
+fpr, tpr, threshold = metrics.roc_curve(y_test, resu)
+rocauc = metrics.auc(fpr, tpr)  # 计算AUC
+plt.plot(fpr, tpr, 'b', label='AUC = %0.2f' % rocauc)  # 生成ROC曲线
+plt.legend(loc='lower right')
+plt.plot([0, 1], [0, 1], 'r--')
+plt.xlim([0, 1])
+plt.ylim([0, 1])
+plt.ylabel('真正率')
+plt.xlabel('假正率')
+plt.show()
+
+l1 = pd.DataFrame(fpr)
+l1 = l1.reset_index(drop=True)
+l2 = pd.DataFrame(tpr)
+l2 = l2.reset_index(drop=True)
+l3 = pd.DataFrame(threshold)
+l3 = l3.reset_index(drop=True)
+da = pd.concat([l1, l2, l3], axis=1)
+da.columns = ['fpr', 'tpr', 'threshold']
+dat = da.sort_values(by='threshold')
+dat['rank'] = 1 - dat['threshold']
+ll1 = list(dat['fpr'])
+ll2 = list(dat['tpr'])
+dat['ks'] = dat['tpr'] - dat['fpr']
+ks_value = max(abs(dat['ks']))
+plt.plot(dat['rank'], dat['fpr'], 'b')
+plt.plot(dat['rank'], dat['tpr'], 'r')
+plt.plot(dat['rank'], dat['ks'], 'g', label='ks = %0.2f' % ks_value)
+plt.legend(loc='lower right')
+plt.xlim([0, 1])
+plt.ylim([0, 1])
+plt.show()
+# ----------------------------------评分-----------------------------------------------------
+'''在建立标准评分卡之前，我们需要选取几个评分卡参数：基础分值、 PDO（比率翻倍的分值）和好坏比。
+ 这里， 我们取600分为基础分值，PDO为20 （每高20分好坏比翻一倍），好坏比取20。'''
+# coe为逻辑回归模型的系数
+coe = [9.738849, 0.638002, 0.505995, 1.032246, 1.790041, 1.131956]
+p = 20 / math.log(2)
+q = 600 - 20 * math.log(20) / math.log(2)
+baseScore = round(q + p * coe[0], 0)
+# 各项部分分数
+# 计算分数函数
+
+
+def get_score(coe, woe, factor):
+    scores = []
+    for w in woe:
+        score = round(coe*w*factor, 0)
+        scores.append(score)
+    return scores
+
+
+x1 = get_score(coe[1], woe_x1, p)
+x2 = get_score(coe[2], woe_x2, p)
+x3 = get_score(coe[3], woe_x3, p)
+x7 = get_score(coe[4], woe_x7, p)
+x9 = get_score(coe[5], woe_x9, p)
+print(x1, x2, x3, x7, x9)
+# 根据变量计算分数,每个样本在变量上的分数
+
+
+def compute_score(series, cut, score):
+    list = []
+    i = 0
+    while i < len(series):
+        value = series[i]
+        j = len(cut) - 2
+        m = len(cut) - 2
+        while j >= 0:
+            if value >= cut[j]:
+                j = -1
+            else:
+                j -= 1
+                m -= 1
+        list.append(score[m])
+        i += 1
+    return list
+
+
+X_test = X_test.reset_index(drop=True)
+y_test = y_test.reset_index(drop=True)
+X_test['label'] = y_test[['标签']]
+X_test['BaseScore'] = pd.Series(np.zeros(len(X_test)))+baseScore
+X_test['x1'] = pd.Series(compute_score(X_test['无担保放款循环利用'], cut_x1, x1))
+X_test['x2'] = pd.Series(compute_score(X_test['年龄'], cut_x2, x2))
+X_test['x3'] = pd.Series(compute_score(X_test['35-59逾期不糟糕次数'], cut_x3, x3))
+X_test['x7'] = pd.Series(compute_score(X_test['90天逾期次数'], cut_x7, x7))
+X_test['x9'] = pd.Series(compute_score(X_test['69-89逾期不糟糕次数'], cut_x9, x9))
+X_test['Score'] = X_test['x1'] + X_test['x2'] + X_test['x3'] + X_test['x7'] + X_test['x9'] + X_test['BaseScore']
+X_test.to_csv('D:/python相关/ScoreData.csv', index=False, encoding='utf_8_sig')
+
+print(dfx1, ivx1, cut_x1)
